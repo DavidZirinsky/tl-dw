@@ -27,14 +27,24 @@ resource "aws_iam_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Lambda Layer
+resource "aws_lambda_layer_version" "tldw_layer" {
+  filename            = "lambda_layer.zip"
+  layer_name          = "tldw_layer"
+  compatible_runtimes = ["python3.9"]
+  source_code_hash    = filebase64sha256("lambda_layer.zip")
+}
+
 # Lambda Function
 resource "aws_lambda_function" "tldw" {
-  filename         = "lambda/lambda_function.zip"
+  filename         = "lambda_function.zip"
   function_name    = "tldw_lambda"
   role             = aws_iam_role.lambda_role.arn
-  handler          = "index.handler"
+  handler          = "lambda_function.lambda_handler"
   runtime          = "python3.9"
-  source_code_hash = filebase64sha256("lambda/lambda_function.zip")
+  timeout          = 120 # Increased timeout
+  source_code_hash = filebase64sha256("lambda_function.zip")
+  layers           = [aws_lambda_layer_version.tldw_layer.arn]
   # ENV Variable
   environment {
     variables = {

@@ -3,57 +3,34 @@ import os
 import subprocess
 import tempfile
 import shutil
-
 import requests
 
-def lambda_handler(event, context):
-    """
-    AWS Lambda function to summarize a YouTube video using its subtitles,
-    with streaming response to the frontend.
-
-    Expects a GET request with a 'url' query parameter for the YouTube video.
-    """
+def stream_process(youtube_url):
+    """Generator function that performs the work and yields the stream."""
     try:
-        query_params = event.get('queryStringParameters', {})
-        youtube_url = query_params.get('url')
-
-        if not youtube_url:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': 'Missing "url" query parameter.'})
-            }
-
+        yield b"Starting process...\n"
         temp_dir = tempfile.mkdtemp()
-        output_template = os.path.join(temp_dir, 'transcript.%(ext)s')
-        subtitle_path = os.path.join(temp_dir, 'transcript.en.json3')
-        transcript_path = os.path.join(temp_dir, 'transcript.txt')
-
+        
         try:
-            # Download the English json3 subtitle using yt-dlp
-            # yt-dlp needs to be available in the Lambda environment (e.g., via a layer)
+            output_template = os.path.join(temp_dir, 'transcript.%(ext)s')
+            subtitle_path = os.path.join(temp_dir, 'transcript.en.json3')
+            transcript_path = os.path.join(temp_dir, 'transcript.txt')
+
+            yield b"Downloading subtitles...\n"
             yt_dlp_command = [
-                'yt-dlp',
-                '--skip-download',
-                '--write-auto-sub',
-                '--sub-format', 'json3',
-                '--sub-lang', 'en',
-                '-o', output_template,
-                youtube_url
+                'yt-dlp', '--skip-download', '--write-auto-sub',
+                '--sub-format', 'json3', '--sub-lang', 'en',
+                '-o', output_template, youtube_url
             ]
             subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
 
             if not os.path.exists(subtitle_path):
-                return {
-                    'statusCode': 500,
-                    'body': json.dumps({'error': f'Subtitle file not found at {subtitle_path}. Check if subtitles are available for the video.'})
-                }
+                yield json.dumps({'error': f'Subtitle file not found at {subtitle_path}.'}).encode('utf-8')
+                return
 
-            # Extract the text from the json3 subtitle file using jq
-            # jq also needs to be available in the Lambda environment (e.g., via a layer)
+            yield b"Extracting transcript...\n"
             jq_command = [
-                'jq',
-                '-r',
-                '.events[].segs[]?.utf8 | select(type == "string")',
+                'jq', '-r', '.events[].segs[]?.utf8 | select(type == "string")',
                 subtitle_path
             ]
             with open(transcript_path, 'w') as f:
@@ -63,18 +40,14 @@ def lambda_handler(event, context):
                 transcript_content = f.read()
 
             if not transcript_content.strip():
-                return {
-                    'statusCode': 500,
-                    'body': json.dumps({'error': 'Could not extract any text from the subtitles.'})
-                }
+                yield json.dumps({'error': 'Could not extract any text from the subtitles.'}).encode('utf-8')
+                return
 
-            # --- Streaming LLM API Call --- 
+            yield b"Generating summary...\n"
             llm_api_key = os.environ.get('OPENAI_API_KEY')
             if not llm_api_key:
-                return {
-                    'statusCode': 500,
-                    'body': json.dumps({'error': 'OPENAI_API_KEY not set in environment variables.'})
-                }
+                yield json.dumps({'error': 'OPENAI_API_KEY not set.'}).encode('utf-8')
+                return
 
             headers = {
                 'Authorization': f'Bearer {llm_api_key}',
@@ -86,66 +59,65 @@ def lambda_handler(event, context):
                     {'role': 'system', 'content': 'Summarize the main points of this talk.'},
                     {'role': 'user', 'content': transcript_content}
                 ],
-                'stream': True # <--- IMPORTANT: Enable streaming
+                'stream': True
             }
 
-            # Make the streaming request to OpenAI
             llm_response = requests.post(
                 'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                json=payload,
-                stream=True # <--- IMPORTANT: Keep the connection open for streaming
+                headers=headers, json=payload, stream=True
             )
             llm_response.raise_for_status()
 
-            # API Gateway expects a specific format for streaming responses.
-            # The 'body' must be a generator that yields bytes.
-            # Each yielded chunk will be sent as a separate part of the HTTP response.
-            def generate_summary_chunks():
-                for chunk in llm_response.iter_lines():
-                    if chunk:
-                        # OpenAI's streaming response sends data lines prefixed with "data: "
-                        # and a final "[DONE]" message.
-                        if chunk.startswith(b'data: '):
-                            json_chunk = chunk[len(b'data: '):]
-                            if json_chunk == b'[DONE]':
-                                break
-                            try:
-                                data = json.loads(json_chunk)
-                                # Extract the content from the chunk
-                                content = data['choices'][0]['delta'].get('content', '')
-                                if content:
-                                    yield content.encode('utf-8') # Yield as bytes
-                            except json.JSONDecodeError:
-                                # Handle malformed JSON chunks if necessary
-                                pass
-                # Ensure the stream is properly closed
-                llm_response.close()
-
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'text/plain', # Or application/json if you're sending JSON chunks
-                    'Transfer-Encoding': 'chunked' # API Gateway handles this automatically with streaming
-                },
-                'body': generate_summary_chunks() # Pass the generator function
-            }
+            for chunk in llm_response.iter_lines():
+                if chunk and chunk.startswith(b'data: '):
+                    json_chunk = chunk[len(b'data: '):]
+                    if json_chunk == b'[DONE]':
+                        break
+                    try:
+                        data = json.loads(json_chunk)
+                        content = data['choices'][0]['delta'].get('content', '')
+                        if content:
+                            yield content.encode('utf-8')
+                    except json.JSONDecodeError:
+                        pass
+            llm_response.close()
 
         finally:
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
+        
+        yield b"\n--- End of summary ---\n"
 
     except subprocess.CalledProcessError as e:
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'error': f'External command failed: {e.cmd}',
-                'stdout': e.stdout,
-                'stderr': e.stderr
-            })
-        }
+        yield json.dumps({
+            'error': f'External command failed: {e.cmd}',
+            'stdout': e.stdout,
+            'stderr': e.stderr
+        }).encode('utf-8')
     except Exception as e:
+        yield json.dumps({'error': str(e)}).encode('utf-8')
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda function to summarize a YouTube video using its subtitles,
+    with streaming response to the frontend.
+    """
+    query_params = event.get('queryStringParameters', {})
+    youtube_url = query_params.get('url') if query_params else None
+
+    if not youtube_url:
         return {
-            'statusCode': 500,
-            'body': json.dumps({'error': str(e)})
+            'statusCode': 404,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({'error': 'Missing "url" query parameter.'})
         }
+
+    return {
+        'statusCode': 200,
+        'isBase64Encoded': False,
+        'headers': {
+            'Content-Type': 'text/plain',
+            'Transfer-Encoding': 'chunked'
+        },
+        'body': stream_process(youtube_url)
+    }

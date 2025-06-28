@@ -1,17 +1,21 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status.
 
-# Define the directory for the layer
-LAYER_DIR="lambda_layer"
-BIN_DIR="$LAYER_DIR/bin"
+# Get the absolute path of the script's directory
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+PROJECT_ROOT=$( cd -- "$SCRIPT_DIR/.." &> /dev/null && pwd )
+INFRA_DIR="$PROJECT_ROOT/infra"
 
-PYTHON_PKGS_DIR="$LAYER_DIR/python/lib/python3.12/site-packages"
+# Define the directory for the layer relative to the script
+LAYER_DIR="$SCRIPT_DIR/lambda_layer"
+BIN_DIR="$LAYER_DIR/bin"
+PYTHON_PKGS_DIR="$LAYER_DIR/python/lib/python3.9/site-packages"
 
 # Clean up previous build
 echo "Cleaning up old layer directory and zip files..."
 rm -rf "$LAYER_DIR"
-rm -f lambda_layer.zip
-rm -f lambda_function.zip
+rm -f "$INFRA_DIR/lambda_layer.zip"
+rm -f "$INFRA_DIR/lambda_function.zip"
 
 # Create directories
 echo "Creating layer directories..."
@@ -42,9 +46,9 @@ echo "Lambda layer contents created successfully in '$LAYER_DIR/'"
 echo "Creating deployment packages..."
 
 echo "Zipping lambda layer..."
-(cd "$LAYER_DIR" && zip -qr ../lambda_layer.zip .)
+(cd "$LAYER_DIR" && zip -qr "$INFRA_DIR/lambda_layer.zip" .)
 
 echo "Zipping lambda function..."
-zip -q lambda_function.zip lambda_function.py
+(cd "$SCRIPT_DIR" && zip -q "$INFRA_DIR/lambda_function.zip" lambda_function.py)
 
 echo "Deployment packages created: lambda_layer.zip, lambda_function.zip"
