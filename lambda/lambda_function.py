@@ -6,7 +6,6 @@ import shutil
 import requests
 
 def stream_process(youtube_url):
-    print('in stream_process')
     """Generator function that performs the work and yields the stream."""
     try:
         yield b"Starting process...\n"
@@ -100,20 +99,23 @@ def stream_process(youtube_url):
     except Exception as e:
         yield json.dumps({'error': str(e)}).encode('utf-8')
 
-from aws_lambda_powertools.event_handler.api_gateway import stream_response
-
-@stream_response
 def lambda_handler(event, context):
+    """
+    AWS Lambda function with native response streaming.
+    This works with Lambda Function URLs configured for streaming.
+    """
     print('starting')
-    """
-    AWS Lambda function to summarize a YouTube video using its subtitles,
-    with streaming response to the frontend.
-    """
-    query_params = event.get('queryStringParameters', {})
-    youtube_url = query_params.get('url') if query_params else None
+    
+    # For streaming, we need to return a generator that yields the response
+    def response_stream():
+        query_params = event.get('queryStringParameters', {})
+        youtube_url = query_params.get('url') if query_params else None
 
-    if not youtube_url:
-        # This will now correctly return a 404
-        context.fail("Missing 'url' query parameter.")
+        if not youtube_url:
+            yield json.dumps({'error': "Missing 'url' query parameter."}).encode('utf-8')
+            return
 
-    return stream_process(youtube_url)
+        # Stream the actual processing
+        yield from stream_process(youtube_url)
+
+    return {"statusCode": 200, "body": response_stream()}
