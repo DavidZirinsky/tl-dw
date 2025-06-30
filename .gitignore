@@ -59,6 +59,8 @@ frontend/node_modules
 /.pnp
 .pnp.js
 
+lambda/__pycache__
+
 # testing
 /coverage
 

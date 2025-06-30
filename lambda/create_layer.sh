@@ -25,19 +25,15 @@ mkdir -p "$PYTHON_PKGS_DIR"
 # Install Python packages
 # This will also install dependencies like urllib3, certifi, etc.
 echo "Installing Python dependencies..."
-pip install requests -t "$PYTHON_PKGS_DIR"
+pip install requests 'aws-lambda-powertools[all]' yt-dlp -t "$PYTHON_PKGS_DIR"
 
 # Download and install binaries
-echo "Downloading yt-dlp..."
-curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o "$BIN_DIR/yt-dlp"
-
 echo "Downloading jq (for 64-bit Linux)..."
 # This URL points to a specific version of jq. You may want to update it in the future.
 curl -L "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux64" -o "$BIN_DIR/jq"
 
 # Make binaries executable
 echo "Setting permissions..."
-chmod +x "$BIN_DIR/yt-dlp"
 chmod +x "$BIN_DIR/jq"
 
 echo "Lambda layer contents created successfully in '$LAYER_DIR/'"

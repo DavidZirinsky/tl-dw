@@ -6,11 +6,12 @@ import shutil
 import requests
 
 def stream_process(youtube_url):
+    print('in stream_process')
     """Generator function that performs the work and yields the stream."""
     try:
         yield b"Starting process...\n"
         temp_dir = tempfile.mkdtemp()
-        
+        print('14')
         try:
             output_template = os.path.join(temp_dir, 'transcript.%(ext)s')
             subtitle_path = os.path.join(temp_dir, 'transcript.en.json3')
@@ -23,7 +24,7 @@ def stream_process(youtube_url):
                 '-o', output_template, youtube_url
             ]
             subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
-
+            print('27')
             if not os.path.exists(subtitle_path):
                 yield json.dumps({'error': f'Subtitle file not found at {subtitle_path}.'}).encode('utf-8')
                 return
@@ -33,6 +34,7 @@ def stream_process(youtube_url):
                 'jq', '-r', '.events[].segs[]?.utf8 | select(type == "string")',
                 subtitle_path
             ]
+            print('37')
             with open(transcript_path, 'w') as f:
                 subprocess.run(jq_command, check=True, stdout=f, text=True)
 
@@ -43,6 +45,7 @@ def stream_process(youtube_url):
                 yield json.dumps({'error': 'Could not extract any text from the subtitles.'}).encode('utf-8')
                 return
 
+            print('48')
             yield b"Generating summary...\n"
             llm_api_key = os.environ.get('OPENAI_API_KEY')
             if not llm_api_key:
@@ -67,7 +70,7 @@ def stream_process(youtube_url):
                 headers=headers, json=payload, stream=True
             )
             llm_response.raise_for_status()
-
+            print('73')
             for chunk in llm_response.iter_lines():
                 if chunk and chunk.startswith(b'data: '):
                     json_chunk = chunk[len(b'data: '):]
@@ -97,7 +100,11 @@ def stream_process(youtube_url):
     except Exception as e:
         yield json.dumps({'error': str(e)}).encode('utf-8')
 
+from aws_lambda_powertools.event_handler.api_gateway import stream_response
+
+@stream_response
 def lambda_handler(event, context):
+    print('starting')
     """
     AWS Lambda function to summarize a YouTube video using its subtitles,
     with streaming response to the frontend.
@@ -106,18 +113,7 @@ def lambda_handler(event, context):
     youtube_url = query_params.get('url') if query_params else None
 
     if not youtube_url:
-        return {
-            'statusCode': 404,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'error': 'Missing "url" query parameter.'})
-        }
+        # This will now correctly return a 404
+        context.fail("Missing 'url' query parameter.")
 
-    return {
-        'statusCode': 200,
-        'isBase64Encoded': False,
-        'headers': {
-            'Content-Type': 'text/plain',
-            'Transfer-Encoding': 'chunked'
-        },
-        'body': stream_process(youtube_url)
-    }
+    return stream_process(youtube_url)
