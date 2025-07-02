@@ -8,17 +8,14 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="YouTube Video Summarizer")
 
 def stream_process(youtube_url: str):
     """Generator function that performs the work and yields the stream."""
     try:
-
         yield b"Starting process...\n"
         temp_dir = tempfile.mkdtemp()
-        print('start')
-
-        print("TMP Dir listing:", os.listdir("/tmp"))  
+        print('Process started')
 
         output_template = os.path.join(temp_dir, "transcript.%(ext)s")
         subtitle_path = os.path.join(temp_dir, "transcript.en.json3")
@@ -26,20 +23,23 @@ def stream_process(youtube_url: str):
 
         yield b"Downloading subtitles...\n"
         yt_dlp_command = [
-                'yt-dlp', '--skip-download', '--write-auto-sub',
-                '--sub-format', 'json3', '--sub-lang', 'en',
-                '-o', output_template, youtube_url
-            ]
-        subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
-        print('27')
+            'yt-dlp', '--skip-download', '--write-auto-sub',
+            '--sub-format', 'json3', '--sub-lang', 'en',
+            '-o', output_template, youtube_url
+        ]
+        
+        try:
+            subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
+        except FileNotFoundError:
+            yield json.dumps({
+                "error": "yt-dlp not found. Please install yt-dlp in your container."
+            }).encode("utf-8")
+            return
 
         if not os.path.exists(subtitle_path):
-            print(json.dumps(
-                {"error": f"Subtitle file not found at {subtitle_path}."}
-            ).encode("utf-8"))
             err = json.dumps({
-                "error": f"No subtitle file found in {temp_dir}"
-                })
+                "error": f"No subtitle file found. The video might not have auto-generated subtitles."
+            })
             yield err.encode("utf-8")
             return
 
@@ -51,7 +51,7 @@ def stream_process(youtube_url: str):
                 stdout=f,
                 text=True,
             )
-        print('62')
+
         with open(transcript_path, "r") as f:
             transcript_content = f.read()
 
@@ -60,14 +60,14 @@ def stream_process(youtube_url: str):
                 {"error": "Could not extract any text from the subtitles."}
             ).encode("utf-8")
             return
-        print('70')
+
         yield b"Generating summary...\n"
         llm_api_key = os.environ.get("OPENAI_API_KEY")
         if not llm_api_key:
             yield json.dumps({"error": "OPENAI_API_KEY not set."}).encode("utf-8")
             return
 
-        # call OpenAI with streaming
+        # Call OpenAI with streaming
         headers = {
             "Authorization": f"Bearer {llm_api_key}",
             "Content-Type": "application/json",
@@ -80,18 +80,19 @@ def stream_process(youtube_url: str):
             ],
             "stream": True,
         }
+        
         llm_response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload,
             stream=True,
         )
-        print('96')
+        
         llm_response.raise_for_status()
 
         for chunk in llm_response.iter_lines():
             if chunk and chunk.startswith(b"data: "):
-                data = chunk[len(b"data: ") :]
+                data = chunk[len(b"data: "):]
                 if data == b"[DONE]":
                     break
                 try:
@@ -103,43 +104,45 @@ def stream_process(youtube_url: str):
                     continue
 
         llm_response.close()
-        print('113')
+
     except subprocess.CalledProcessError as e:
-        print(e)
-        yield json.dumps(
-            {
-                "error": f"External command failed: {e.cmd}",
-                "stdout": e.stdout,
-                "stderr": e.stderr,
-            }
-        ).encode("utf-8")
+        yield json.dumps({
+            "error": f"External command failed: {e.cmd}",
+            "stdout": e.stdout if hasattr(e, 'stdout') else "",
+            "stderr": e.stderr if hasattr(e, 'stderr') else "",
+        }).encode("utf-8")
+    except Exception as e:
+        yield json.dumps({
+            "error": f"Unexpected error: {str(e)}"
+        }).encode("utf-8")
     finally:
-        if os.path.isdir(temp_dir):
+        if 'temp_dir' in locals() and os.path.isdir(temp_dir):
             shutil.rmtree(temp_dir)
-    print('126')
+    
     yield b"\n--- End of summary ---\n"
 
 @app.get("/")
 def status():
-    return 'ok'
+    return {"status": "ok", "message": "YouTube Video Summarizer API"}
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
 
 @app.get("/sum", response_class=StreamingResponse)
 def summarize(url: str = Query(..., description="YouTube video URL to summarize")):
     """
     Stream back status updates, transcript extraction, and LLM summary chunks.
     """
-    # Validate URL presence
     if not url:
         raise HTTPException(status_code=400, detail="Missing `url` query parameter")
 
-    # Wrap our generator in a StreamingResponse
     return StreamingResponse(
         stream_process(url),
         media_type="text/plain; charset=utf-8",
     )
 
-# for local dev
+# For local development
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
