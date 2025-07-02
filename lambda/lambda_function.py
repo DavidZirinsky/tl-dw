@@ -13,13 +13,12 @@ app = FastAPI()
 def stream_process(youtube_url: str):
     """Generator function that performs the work and yields the stream."""
     try:
-        import os, statvfs
-        # …
-        print("TMP FS stats:", os.statvfs("/tmp"))      # free blocks, block size, etc.
-        print("TMP Dir listing:", os.listdir("/tmp"))  
-        print('start')
+
         yield b"Starting process...\n"
         temp_dir = tempfile.mkdtemp()
+        print('start')
+
+        print("TMP Dir listing:", os.listdir("/tmp"))  
 
         output_template = os.path.join(temp_dir, "transcript.%(ext)s")
         subtitle_path = os.path.join(temp_dir, "transcript.en.json3")
@@ -27,27 +26,12 @@ def stream_process(youtube_url: str):
 
         yield b"Downloading subtitles...\n"
         yt_dlp_command = [
-                "yt-dlp",
-                "--skip-download",
-                "--write-auto-sub",
-                "--sub-format",
-                "json3",
-                "--sub-lang",
-                "en",
-                "-o",
-                output_template,
-                youtube_url,
+                'yt-dlp', '--skip-download', '--write-auto-sub',
+                '--sub-format', 'json3', '--sub-lang', 'en',
+                '-o', output_template, youtube_url
             ]
-        try:
-            # let errors and progress hit CloudWatch
-            subprocess.run(yt_dlp_command, check=True, text=True)
-        except subprocess.CalledProcessError as e:
-            # now you’ll see the real reason it failed
-            print("yt-dlp stderr:", e.stderr)
-            yield json.dumps({"error": "Failed to download subtitles"}).encode()
-            return
-        print('42')
-        print(os.listdir(temp_dir))
+        subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
+        print('27')
 
         if not os.path.exists(subtitle_path):
             print(json.dumps(
@@ -138,6 +122,7 @@ def stream_process(youtube_url: str):
 @app.get("/")
 def status():
     return 'ok'
+
 
 @app.get("/sum", response_class=StreamingResponse)
 def summarize(url: str = Query(..., description="YouTube video URL to summarize")):
