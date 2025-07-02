@@ -27,37 +27,139 @@ resource "aws_iam_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Lambda Layer
-resource "aws_lambda_layer_version" "tldw_layer" {
-  filename            = "lambda_layer.zip"
-  layer_name          = "tldw_layer"
-  compatible_runtimes = ["python3.9"]
-  source_code_hash    = filebase64sha256("lambda_layer.zip")
+# Pull in your ECR repo so we can reference its URI
+data "aws_ecr_repository" "my_streaming_func" {
+  name = "my-streaming-func"
 }
 
-# Lambda Function
+# Fetch the latest image’s digest
+data "aws_ecr_image" "latest" {
+  repository_name = data.aws_ecr_repository.my_streaming_func.name
+  image_tag       = "latest"
+}
+
+# Point Lambda at the digest URI
 resource "aws_lambda_function" "tldw" {
-  filename         = "lambda_function.zip"
-  function_name    = "tldw_lambda"
-  role             = aws_iam_role.lambda_role.arn
-  handler          = "lambda_function.lambda_handler"
-  runtime          = "python3.9"
-  timeout          = 120 # Increased timeout
-  source_code_hash = filebase64sha256("lambda_function.zip")
-  layers           = [aws_lambda_layer_version.tldw_layer.arn]
-  # ENV Variable
+  function_name = "tldw_lambda"
+  role          = aws_iam_role.lambda_role.arn
+
+  package_type = "Image"
+  image_uri    = "${data.aws_ecr_repository.my_streaming_func.repository_url}@${data.aws_ecr_image.latest.image_digest}"
+
+  timeout = 120
+
   environment {
     variables = {
       OPENAI_API_KEY = var.OPENAI_API_KEY
     }
   }
+
+  # (optional) ensure a new version is published on every apply
+  publish = true
 }
 
-# Lambda Function URL
-resource "aws_lambda_function_url" "tldw_url" {
-  function_name      = aws_lambda_function.tldw.function_name
-  authorization_type = "NONE"
-  invoke_mode        = "RESPONSE_STREAM"
+# API Gateway
+resource "aws_api_gateway_rest_api" "tldw_api" {
+  name        = "tldwAPI"
+  description = "API for tldw Lambda"
+}
+
+# Create a single proxy resource at the root level
+resource "aws_api_gateway_resource" "proxy" {
+  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+  parent_id   = aws_api_gateway_rest_api.tldw_api.root_resource_id
+  path_part   = "{proxy+}"
+}
+
+# ANY method to catch all HTTP methods
+resource "aws_api_gateway_method" "proxy_method" {
+  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
+  resource_id   = aws_api_gateway_resource.proxy.id
+  http_method   = "ANY"
+  authorization = "NONE"
+}
+
+# Proxy integration with Lambda
+resource "aws_api_gateway_integration" "lambda_proxy_integration" {
+  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+  resource_id = aws_api_gateway_resource.proxy.id
+  http_method = aws_api_gateway_method.proxy_method.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.tldw.invoke_arn
+}
+
+# Also handle the root path "/" 
+resource "aws_api_gateway_method" "root_method" {
+  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
+  resource_id   = aws_api_gateway_rest_api.tldw_api.root_resource_id
+  http_method   = "ANY"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "root_integration" {
+  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+  resource_id = aws_api_gateway_rest_api.tldw_api.root_resource_id
+  http_method = aws_api_gateway_method.root_method.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.tldw.invoke_arn
+}
+
+# Deploy API Gateway
+resource "aws_api_gateway_deployment" "tldw_deployment" {
+  depends_on = [
+    aws_api_gateway_integration.lambda_proxy_integration,
+    aws_api_gateway_integration.root_integration
+  ]
+
+  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+
+  # Add a trigger that forces new deployment each time
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.proxy.id,
+      aws_api_gateway_method.proxy_method.id,
+      aws_api_gateway_integration.lambda_proxy_integration.id,
+      aws_api_gateway_method.root_method.id,
+      aws_api_gateway_integration.root_integration.id
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Allow API Gateway to Invoke Lambda
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.tldw.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  # The /* part allows invocation from any stage, method and resource path
+  source_arn = "${aws_api_gateway_rest_api.tldw_api.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_stage" "prod" {
+  deployment_id = aws_api_gateway_deployment.tldw_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
+  stage_name    = "prod"
+}
+
+# API Gateway Method Settings (for rate limiting)
+resource "aws_api_gateway_method_settings" "settings" {
+  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+  stage_name  = aws_api_gateway_stage.prod.stage_name
+  method_path = "*/*" # This applies to all methods on all resources
+
+  settings {
+    throttling_rate_limit  = 2 # per second
+    throttling_burst_limit = 5
+  }
 }
 
 variable "OPENAI_API_KEY" {
@@ -66,8 +168,21 @@ variable "OPENAI_API_KEY" {
   sensitive   = true # Marks as sensitive to hide in logs
 }
 
+
 # Output the API URLs
-output "lambda_function_url" {
-  value = aws_lambda_function_url.tldw_url.function_url
+output "api_base_url" {
+  value = aws_api_gateway_stage.prod.invoke_url
 }
 
+# Lambda Function URL (for streaming)
+resource "aws_lambda_function_url" "tldw_url" {
+  function_name      = aws_lambda_function.tldw.function_name
+  authorization_type = "AWS_IAM" # Changed to require IAM auth
+  invoke_mode        = "RESPONSE_STREAM"
+}
+
+
+output "lambda_function_url" {
+  description = "Direct Lambda URL (for streaming, use carefully)"
+  value       = aws_lambda_function_url.tldw_url.function_url
+}

@@ -17,7 +17,10 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-#Set the Lambda invoke mode
+ENV PORT=8080
+ENV AWS_LWA_PORT=8080
 ENV AWS_LWA_INVOKE_MODE=RESPONSE_STREAM
+ENV AWS_LAMBDA_EXEC_WRAPPER=/opt/extensions/lambda-adapter
 
-CMD ["python", "lambda_function.py"]
+
+CMD ["uvicorn", "lambda_function:app", "--host", "0.0.0.0", "--port", "8080"]
