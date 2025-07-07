@@ -1,188 +1,198 @@
-provider "aws" {
-  region = "us-east-1"
-}
-
-# IAM Role for Lambda Execution
-resource "aws_iam_role" "lambda_role" {
-  name               = "tldw_lambda_role"
-  assume_role_policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Action": "sts:AssumeRole",
-      "Principal": {
-        "Service": "lambda.amazonaws.com"
-      },
-      "Effect": "Allow"
-    }
-  ]
-}
-EOF
-}
-
-resource "aws_iam_policy_attachment" "lambda_basic_execution" {
-  name       = "lambda_basic_execution"
-  roles      = [aws_iam_role.lambda_role.name]
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-# Pull in your ECR repo so we can reference its URI
-data "aws_ecr_repository" "my_streaming_func" {
-  name = "my-streaming-func"
-}
-
-# Fetch the latest image’s digest
-data "aws_ecr_image" "latest" {
-  repository_name = data.aws_ecr_repository.my_streaming_func.name
-  image_tag       = "latest"
-}
-
-# Point Lambda at the digest URI
-resource "aws_lambda_function" "tldw" {
-  function_name = "tldw_lambda"
-  role          = aws_iam_role.lambda_role.arn
-
-  package_type = "Image"
-  image_uri    = "${data.aws_ecr_repository.my_streaming_func.repository_url}@${data.aws_ecr_image.latest.image_digest}"
-
-  timeout = 120
-
-  environment {
-    variables = {
-      OPENAI_API_KEY = var.OPENAI_API_KEY
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
     }
   }
-
-  # (optional) ensure a new version is published on every apply
-  publish = true
 }
 
-# API Gateway
-resource "aws_api_gateway_rest_api" "tldw_api" {
-  name        = "tldwAPI"
-  description = "API for tldw Lambda"
+provider "google" {
+  credentials = var.credentials_file
+  project     = var.project_id
+  region      = var.region
 }
 
-# Create a single proxy resource at the root level
-resource "aws_api_gateway_resource" "proxy" {
-  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
-  parent_id   = aws_api_gateway_rest_api.tldw_api.root_resource_id
-  path_part   = "{proxy+}"
+# Enable required APIs
+resource "google_project_service" "run_api" {
+  project = var.project_id
+  service = "run.googleapis.com"
 }
 
-# ANY method to catch all HTTP methods
-resource "aws_api_gateway_method" "proxy_method" {
-  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
-  resource_id   = aws_api_gateway_resource.proxy.id
-  http_method   = "ANY"
-  authorization = "NONE"
+resource "google_project_service" "artifactregistry_api" {
+  project = var.project_id
+  service = "artifactregistry.googleapis.com"
 }
 
-# Proxy integration with Lambda
-resource "aws_api_gateway_integration" "lambda_proxy_integration" {
-  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
-  resource_id = aws_api_gateway_resource.proxy.id
-  http_method = aws_api_gateway_method.proxy_method.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.tldw.invoke_arn
+# Reference existing Artifact Registry repository
+data "google_artifact_registry_repository" "tldw_registry" {
+  location      = var.region
+  repository_id = "tldw-registry"
 }
 
-# Also handle the root path "/" 
-resource "aws_api_gateway_method" "root_method" {
-  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
-  resource_id   = aws_api_gateway_rest_api.tldw_api.root_resource_id
-  http_method   = "ANY"
-  authorization = "NONE"
+# Service account for Cloud Run
+resource "google_service_account" "tldw_service_account" {
+  account_id   = "tldw-cloud-run"
+  display_name = "TLDW Cloud Run Service Account"
 }
 
-resource "aws_api_gateway_integration" "root_integration" {
-  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
-  resource_id = aws_api_gateway_rest_api.tldw_api.root_resource_id
-  http_method = aws_api_gateway_method.root_method.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.tldw.invoke_arn
+# Secret Manager secret for OpenAI API key
+resource "google_secret_manager_secret" "openai_api_key" {
+  secret_id = "openai-api-key"
+  replication {
+    auto {}
+  }
 }
 
-# Deploy API Gateway
-resource "aws_api_gateway_deployment" "tldw_deployment" {
+# Grant the service account access to the secret
+resource "google_secret_manager_secret_iam_member" "openai_api_key_access" {
+  secret_id = google_secret_manager_secret.openai_api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.tldw_service_account.email}"
+}
+
+# Cloud Run service
+resource "google_cloud_run_v2_service" "tldw" {
+  name     = "tldw-service"
+  location = var.region
   depends_on = [
-    aws_api_gateway_integration.lambda_proxy_integration,
-    aws_api_gateway_integration.root_integration
+    google_project_service.run_api
   ]
 
-  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
+  template {
+    service_account = google_service_account.tldw_service_account.email
+    
+    timeout = "120s"
+    
+    scaling {
+      min_instance_count = 0
+      max_instance_count = 1  # Free tier: limit to 1 instance
+    }
 
-  # Add a trigger that forces new deployment each time
-  triggers = {
-    redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.proxy.id,
-      aws_api_gateway_method.proxy_method.id,
-      aws_api_gateway_integration.lambda_proxy_integration.id,
-      aws_api_gateway_method.root_method.id,
-      aws_api_gateway_integration.root_integration.id
-    ]))
+    containers {
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/tldw-registry/tldw:latest"
+      
+      resources {
+        limits = {
+          cpu    = "1000m"      # Free tier: 1 vCPU max
+          memory = "512Mi"      # Free tier: 512MB max
+        }
+        cpu_idle = true         # Free tier: CPU only allocated when processing
+      }
+
+      env {
+        name = "OPENAI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.openai_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      ports {
+        container_port = 8080
+      }
+    }
   }
 
-  lifecycle {
-    create_before_destroy = true
+  traffic {
+    percent = 100
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
   }
 }
 
-# Allow API Gateway to Invoke Lambda
-resource "aws_lambda_permission" "api_gateway" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.tldw.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  # The /* part allows invocation from any stage, method and resource path
-  source_arn = "${aws_api_gateway_rest_api.tldw_api.execution_arn}/*/*"
+# Allow public access to Cloud Run service
+resource "google_cloud_run_service_iam_member" "public_access" {
+  service  = google_cloud_run_v2_service.tldw.name
+  location = google_cloud_run_v2_service.tldw.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }
 
-resource "aws_api_gateway_stage" "prod" {
-  deployment_id = aws_api_gateway_deployment.tldw_deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.tldw_api.id
-  stage_name    = "prod"
+# Variables
+variable "credentials_file" {
+  description = "Path to GCP service account JSON key file"
+  type        = string
 }
 
-# API Gateway Method Settings (for rate limiting)
-resource "aws_api_gateway_method_settings" "settings" {
-  rest_api_id = aws_api_gateway_rest_api.tldw_api.id
-  stage_name  = aws_api_gateway_stage.prod.stage_name
-  method_path = "*/*" # This applies to all methods on all resources
+variable "project_id" {
+  description = "Google Cloud project ID"
+  type        = string
+}
 
-  settings {
-    throttling_rate_limit  = 2 # per second
-    throttling_burst_limit = 5
-  }
+variable "region" {
+  description = "Google Cloud region"
+  type        = string
+  default     = "us-central1"
 }
 
 variable "OPENAI_API_KEY" {
-  description = "API key for the service"
+  description = "OpenAI API key - will be stored in Secret Manager"
   type        = string
-  sensitive   = true # Marks as sensitive to hide in logs
+  sensitive   = true
 }
 
-
-# Output the API URLs
-output "api_base_url" {
-  value = aws_api_gateway_stage.prod.invoke_url
+# Budget alert to monitor costs
+resource "google_billing_budget" "free_tier_budget" {
+  count = var.enable_budget_alerts ? 1 : 0
+  
+  billing_account = var.billing_account_id
+  display_name    = "Free Tier Budget Alert"
+  
+  budget_filter {
+    projects = ["projects/${var.project_id}"]
+  }
+  
+  amount {
+    specified_amount {
+      currency_code = "USD"
+      units         = "5"  # Alert at $5
+    }
+  }
+  
+  threshold_rules {
+    threshold_percent = 0.8  # 80% of budget
+    spend_basis       = "CURRENT_SPEND"
+  }
+  
+  threshold_rules {
+    threshold_percent = 1.0  # 100% of budget
+    spend_basis       = "CURRENT_SPEND"
+  }
 }
 
-# Lambda Function URL (for streaming)
-resource "aws_lambda_function_url" "tldw_url" {
-  function_name      = aws_lambda_function.tldw.function_name
-  authorization_type = "AWS_IAM" # Changed to require IAM auth
-  invoke_mode        = "RESPONSE_STREAM"
+# Variables for budget monitoring
+variable "enable_budget_alerts" {
+  description = "Enable budget alerts (requires billing account ID)"
+  type        = bool
+  default     = false
 }
 
+variable "billing_account_id" {
+  description = "Billing account ID for budget alerts"
+  type        = string
+  default     = ""
+}
 
-output "lambda_function_url" {
-  description = "Direct Lambda URL (for streaming, use carefully)"
-  value       = aws_lambda_function_url.tldw_url.function_url
+# Outputs
+output "service_url" {
+  description = "URL of the Cloud Run service"
+  value       = google_cloud_run_v2_service.tldw.uri
+}
+
+output "artifact_registry_url" {
+  description = "URL of the Artifact Registry repository"
+  value       = data.google_artifact_registry_repository.tldw_registry.name
+}
+
+output "free_tier_info" {
+  description = "Free tier usage information"
+  value = {
+    cloud_run_requests = "2 million requests/month"
+    cloud_run_cpu_time = "400,000 vCPU-seconds/month"
+    cloud_run_memory   = "800,000 GiB-seconds/month"
+    artifact_registry  = "0.5 GB storage free"
+    secret_manager     = "6 active secrets free"
+  }
 }

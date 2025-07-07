@@ -7,6 +7,8 @@ import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 import uvicorn
+from youtube_transcript_api import YouTubeTranscriptApi
+import re
 
 app = FastAPI()
 
@@ -28,6 +30,9 @@ def stream_process(youtube_url: str):
         yt_dlp_command = [
                 'yt-dlp', '--skip-download', '--write-auto-sub',
                 '--sub-format', 'json3', '--sub-lang', 'en',
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                '--extractor-args', 'youtube:player_client=ios,web',
+                '--no-check-certificate',
                 '-o', output_template, youtube_url
             ]
         subprocess.run(yt_dlp_command, check=True, capture_output=True, text=True)
@@ -121,7 +126,7 @@ def stream_process(youtube_url: str):
 
 @app.get("/")
 def status():
-    return 'ok'
+    return {"status": "ok", "service": "tldw"}
 
 
 @app.get("/sum", response_class=StreamingResponse)
