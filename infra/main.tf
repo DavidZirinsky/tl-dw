@@ -44,12 +44,46 @@ resource "google_secret_manager_secret" "openai_api_key" {
   }
 }
 
-# Grant the service account access to the secret
-resource "google_secret_manager_secret_iam_member" "openai_api_key_access" {
-  secret_id = google_secret_manager_secret.openai_api_key.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.tldw_service_account.email}"
+# Secret Manager secret for YouTube API key
+resource "google_secret_manager_secret" "youtube_api_key" {
+  secret_id = "youtube-api-key"
+  replication {
+    auto {}
+  }
 }
+
+# Secret Manager secret for Google Service Account JSON
+resource "google_secret_manager_secret" "google_service_account_json" {
+  secret_id = "google-service-account-json"
+  replication {
+    auto {}
+  }
+}
+
+# Secret Manager secret for YouTube OAuth token
+resource "google_secret_manager_secret" "youtube_oauth_token" {
+  secret_id = "youtube-oauth-token"
+  replication {
+    auto {}
+  }
+}
+
+# Grant the service account access to the secrets
+# Note: Set these manually via gcloud due to IAM permissions:
+# gcloud secrets add-iam-policy-binding openai-api-key --member="serviceAccount:tldw-cloud-run@esoteric-quanta-122920.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor" --project=esoteric-quanta-122920
+# gcloud secrets add-iam-policy-binding youtube-api-key --member="serviceAccount:tldw-cloud-run@esoteric-quanta-122920.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor" --project=esoteric-quanta-122920
+
+# resource "google_secret_manager_secret_iam_member" "openai_api_key_access" {
+#   secret_id = google_secret_manager_secret.openai_api_key.secret_id
+#   role      = "roles/secretmanager.secretAccessor"
+#   member    = "serviceAccount:${google_service_account.tldw_service_account.email}"
+# }
+
+# resource "google_secret_manager_secret_iam_member" "youtube_api_key_access" {
+#   secret_id = google_secret_manager_secret.youtube_api_key.secret_id
+#   role      = "roles/secretmanager.secretAccessor"
+#   member    = "serviceAccount:${google_service_account.tldw_service_account.email}"
+# }
 
 # Cloud Run service
 resource "google_cloud_run_v2_service" "tldw" {
@@ -90,6 +124,36 @@ resource "google_cloud_run_v2_service" "tldw" {
         }
       }
 
+      env {
+        name = "YOUTUBE_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.youtube_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "GOOGLE_SERVICE_ACCOUNT_JSON"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.google_service_account_json.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "YOUTUBE_OAUTH_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.youtube_oauth_token.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       ports {
         container_port = 8080
       }
@@ -103,12 +167,15 @@ resource "google_cloud_run_v2_service" "tldw" {
 }
 
 # Allow public access to Cloud Run service
-resource "google_cloud_run_service_iam_member" "public_access" {
-  service  = google_cloud_run_v2_service.tldw.name
-  location = google_cloud_run_v2_service.tldw.location
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
+# Note: Set this manually via gcloud due to IAM permissions:
+# gcloud run services add-iam-policy-binding tldw-service --member="allUsers" --role="roles/run.invoker" --region=us-central1 --project=esoteric-quanta-122920
+
+# resource "google_cloud_run_service_iam_member" "public_access" {
+#   service  = google_cloud_run_v2_service.tldw.name
+#   location = google_cloud_run_v2_service.tldw.location
+#   role     = "roles/run.invoker"
+#   member   = "allUsers"
+# }
 
 # Variables
 variable "credentials_file" {
@@ -129,6 +196,18 @@ variable "region" {
 
 variable "OPENAI_API_KEY" {
   description = "OpenAI API key - will be stored in Secret Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "YOUTUBE_API_KEY" {
+  description = "YouTube Data API key - will be stored in Secret Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "GOOGLE_SERVICE_ACCOUNT_JSON" {
+  description = "Google Service Account JSON - will be stored in Secret Manager"
   type        = string
   sensitive   = true
 }
