@@ -1,6 +1,4 @@
 fastapi
 uvicorn[standard]
 requests
-yt-dlp
-google-auth
-google-api-python-client
+youtube-transcript-api
