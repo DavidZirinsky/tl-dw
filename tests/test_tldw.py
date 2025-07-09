@@ -36,28 +36,22 @@ def test_successful_summary_generation(mock_requests_post, mock_get_transcript):
 
 
 def test_init_requires_api_key():
-    """
-    Tests that the VideoSummarizer raises a ValueError if no API key is provided.
-    """
     with pytest.raises(ValueError, match="OpenAI API key is required."):
         VideoSummarizer(openai_api_key="")
 
 
 def test_invalid_youtube_url():
-    """
-    Tests that an error is yielded for an invalid YouTube URL.
-    """
     summarizer = VideoSummarizer(openai_api_key="fake_key")
     result = list(summarizer.summarize("not_a_youtube_url"))
     assert len(result) == 1
     assert "Error: Invalid YouTube URL provided." in result[0]
 
 
+#  Tests that a RuntimeError is raised when the transcript cannot be fetched.
+
+
 @patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 def test_transcript_fetch_failure(mock_get_transcript):
-    """
-    Tests that a RuntimeError is raised when the transcript cannot be fetched.
-    """
     mock_get_transcript.side_effect = Exception("Failed to fetch transcript")
     summarizer = VideoSummarizer(openai_api_key="fake_key")
 
@@ -67,11 +61,9 @@ def test_transcript_fetch_failure(mock_get_transcript):
     assert "Error: Failed to get transcript: Failed to fetch transcript" in result[0]
 
 
+#  Tests that a ValueError is raised for an empty transcript.
 @patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 def test_empty_transcript(mock_get_transcript):
-    """
-    Tests that a ValueError is raised for an empty transcript.
-    """
     mock_get_transcript.return_value = [{"text": " "}]
     summarizer = VideoSummarizer(openai_api_key="fake_key")
 
@@ -84,12 +76,10 @@ def test_empty_transcript(mock_get_transcript):
     )
 
 
+# Tests that an error is yielded when the OpenAI API returns an HTTP error.
 @patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 @patch("tldw.tldw.requests.post")
 def test_openai_api_http_error(mock_requests_post, mock_get_transcript):
-    """
-    Tests that an error is yielded when the OpenAI API returns an HTTP error.
-    """
     mock_get_transcript.return_value = [{"text": "Test transcript."}]
 
     mock_response = MagicMock()
@@ -105,12 +95,10 @@ def test_openai_api_http_error(mock_requests_post, mock_get_transcript):
     assert "Error: 401 Unauthorized" in result[0]
 
 
+# Tests that malformed JSON from the OpenAI stream is handled gracefully.
 @patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 @patch("tldw.tldw.requests.post")
 def test_malformed_json_from_openai(mock_requests_post, mock_get_transcript):
-    """
-    Tests that malformed JSON from the OpenAI stream is handled gracefully.
-    """
     mock_get_transcript.return_value = [{"text": "Test transcript."}]
 
     mock_response = MagicMock()

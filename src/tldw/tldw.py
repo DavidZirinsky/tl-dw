@@ -9,23 +9,17 @@ from youtube_transcript_api import YouTubeTranscriptApi
 logger = logging.getLogger(__name__)
 
 
+# A class to summarize YouTube videos using their transcript and the OpenAI API.
 class VideoSummarizer:
-    """
-    A class to summarize YouTube videos using their transcript and the OpenAI API.
-    """
 
     def __init__(self, openai_api_key: str):
-        """
-        Initializes the VideoSummarizer with an OpenAI API key.
-
-        :param openai_api_key: Your OpenAI API key.
-        """
         if not openai_api_key:
             raise ValueError("OpenAI API key is required.")
         self.openai_api_key = openai_api_key
 
+    # Extracts the video ID from a YouTube URL
     def _extract_video_id(self, youtube_url: str) -> str:
-        """Extracts the video ID from a YouTube URL."""
+
         video_id_match = re.search(
             r"(?:youtube\.com/watch\?v=|youtu\.be/)([^&\n?#]+)", youtube_url
         )
@@ -33,8 +27,8 @@ class VideoSummarizer:
             raise ValueError("Invalid YouTube URL provided.")
         return video_id_match.group(1)
 
+    # Retrieves the transcript for a given video ID
     def _get_transcript(self, video_id: str) -> str:
-        """Retrieves the transcript for a given video ID."""
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id, languages=["en"]
@@ -49,17 +43,8 @@ class VideoSummarizer:
             )
         return transcript_content
 
+    # Summarizes a YouTube video and streams the summary.
     def summarize(self, youtube_url: str, model: str = "gpt-4o-mini"):
-        """
-        Summarizes a YouTube video and streams the summary.
-
-        This is a generator function that yields chunks of the summary as they are
-        received from the OpenAI API.
-
-        :param youtube_url: The URL of the YouTube video.
-        :param model: The OpenAI model to use for summarization.
-        :yields: Chunks of the summary text.
-        """
         try:
             video_id = self._extract_video_id(youtube_url)
             transcript = self._get_transcript(video_id)
@@ -101,6 +86,7 @@ class VideoSummarizer:
                         except (json.JSONDecodeError, KeyError):
                             # Ignore malformed chunks or chunks without content
                             continue
+
         except (requests.exceptions.RequestException, ValueError, RuntimeError) as e:
             # Yield a single error message if something goes wrong.
             yield f"Error: {str(e)}"
