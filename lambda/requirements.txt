@@ -1,4 +1,2 @@
-fastapi
-uvicorn[standard]
 requests
 youtube-transcript-api

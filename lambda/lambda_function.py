@@ -1,113 +1,125 @@
 import os
 import json
 import requests
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
-import uvicorn
 import re
 from youtube_transcript_api import YouTubeTranscriptApi
 
-app = FastAPI()
+class VideoSummarizer:
+    """
+    A class to summarize YouTube videos using their transcript and the OpenAI API.
+    """
+    def __init__(self, openai_api_key: str):
+        """
+        Initializes the VideoSummarizer with an OpenAI API key.
 
-def stream_process(youtube_url: str):
-    """Generator function that performs the work and yields the stream."""
-    try:
-        yield b"Starting process...\n"
-        
-        # Extract video ID from URL
+        :param openai_api_key: Your OpenAI API key.
+        """
+        if not openai_api_key:
+            raise ValueError("OpenAI API key is required.")
+        self.openai_api_key = openai_api_key
+
+    def _extract_video_id(self, youtube_url: str) -> str:
+        """Extracts the video ID from a YouTube URL."""
         video_id_match = re.search(r'(?:youtube\.com/watch\?v=|youtu\.be/)([^&\n?#]+)', youtube_url)
         if not video_id_match:
-            yield json.dumps({"error": "Invalid YouTube URL"}).encode("utf-8")
-            return
-        
-        video_id = video_id_match.group(1)
-        yield f"Extracting video ID: {video_id}\n".encode("utf-8")
+            raise ValueError("Invalid YouTube URL provided.")
+        return video_id_match.group(1)
 
-        yield b"Downloading transcript...\n"
-        proxy_pass = os.environ.get('PROXY_USER_PASS')
-        
-      
+    def _get_transcript(self, video_id: str) -> str:
+        """Retrieves the transcript for a given video ID."""
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
             transcript_content = ' '.join([entry['text'] for entry in transcript_list])
+            if not transcript_content.strip():
+                raise ValueError("Could not extract any text from the video (transcript is empty).")
+            return transcript_content
         except Exception as e:
-            yield f"Failed to get transcript: {str(e)}\n".encode("utf-8")
-            yield json.dumps({"error": f"Could not retrieve transcript: {str(e)}"}).encode("utf-8")
-            return
+            raise RuntimeError(f"Failed to get transcript: {str(e)}") from e
 
-        if not transcript_content.strip():
-            yield json.dumps({"error": "Could not extract any text from the video"}).encode("utf-8")
-            return
-        yield b"Generating summary...\n"
-        llm_api_key = os.environ.get("OPENAI_API_KEY")
-        if not llm_api_key:
-            yield json.dumps({"error": "OPENAI_API_KEY not set."}).encode("utf-8")
-            return
+    def summarize(self, youtube_url: str, model: str = "gpt-4o-mini"):
+        """
+        Summarizes a YouTube video and streams the summary.
 
-        # call OpenAI with streaming
-        headers = {
-            "Authorization": f"Bearer {llm_api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "Summarize the main points of this talk."},
-                {"role": "user", "content": transcript_content},
-            ],
-            "stream": True,
-        }
-        llm_response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            stream=True,
-        )
-        print('96')
-        llm_response.raise_for_status()
+        This is a generator function that yields chunks of the summary as they are
+        received from the OpenAI API.
 
-        for chunk in llm_response.iter_lines():
-            if chunk and chunk.startswith(b"data: "):
-                data = chunk[len(b"data: ") :]
-                if data == b"[DONE]":
-                    break
-                try:
-                    obj = json.loads(data)
-                    content = obj["choices"][0]["delta"].get("content", "")
-                    if content:
-                        yield content.encode("utf-8")
-                except json.JSONDecodeError:
-                    continue
+        :param youtube_url: The URL of the YouTube video.
+        :param model: The OpenAI model to use for summarization.
+        :yields: Chunks of the summary text.
+        """
+        try:
+            video_id = self._extract_video_id(youtube_url)
+            transcript = self._get_transcript(video_id)
 
-        llm_response.close()
-        print('113')
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        yield json.dumps({"error": f"Unexpected error: {str(e)}"}).encode("utf-8")
-    print('126')
-    yield b"\n--- End of summary ---\n"
+            headers = {
+                "Authorization": f"Bearer {self.openai_api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "Summarize the main points of this talk."},
+                    {"role": "user", "content": transcript},
+                ],
+                "stream": True,
+            }
 
-@app.get("/")
-def status():
-    return {"status": "ok", "service": "tldw"}
+            with requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                stream=True,
+            ) as llm_response:
+                llm_response.raise_for_status()
+
+                for chunk in llm_response.iter_lines():
+                    if chunk and chunk.startswith(b"data: "):
+                        data = chunk[len(b"data: ") :]
+                        if data == b"[DONE]":
+                            break
+                        try:
+                            obj = json.loads(data)
+                            content = obj["choices"][0]["delta"].get("content", "")
+                            if content:
+                                yield content
+                        except (json.JSONDecodeError, KeyError):
+                            # Ignore malformed chunks or chunks without content
+                            continue
+        except (requests.exceptions.RequestException, ValueError, RuntimeError) as e:
+            # Yield a single error message if something goes wrong.
+            # A more robust implementation might log this and raise the exception.
+            yield f"Error: {str(e)}"
+        except Exception as e:
+            yield f"An unexpected error occurred: {str(e)}"
+
+    def summarize_and_print(self, youtube_url: str, model: str = "gpt-4o-mini"):
+        """
+        Calls the summarize method and prints the streaming output to the console.
+        """
+        print(f"Summarizing video: {youtube_url}")
+        try:
+            summary_chunks = self.summarize(youtube_url, model)
+            
+            print("\n--- Summary ---\n")
+            for chunk in summary_chunks:
+                print(chunk, end="", flush=True)
+            print("\n\n--- End of Summary ---")
+
+        except Exception as e:
+            print(f"\nAn error occurred: {e}")
 
 
-@app.get("/sum", response_class=StreamingResponse)
-def summarize(url: str = Query(..., description="YouTube video URL to summarize")):
-    """
-    Stream back status updates, transcript extraction, and LLM summary chunks.
-    """
-    # Validate URL presence
-    if not url:
-        raise HTTPException(status_code=400, detail="Missing `url` query parameter")
-
-    # Wrap our generator in a StreamingResponse
-    return StreamingResponse(
-        stream_process(url),
-        media_type="text/plain; charset=utf-8",
-    )
-
-# for local dev
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# Example usage for local development and testing
+if __name__ == '__main__':
+    # This is an example of how to use the VideoSummarizer class.
+    # It requires the OPENAI_API_KEY environment variable to be set.
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        print("Error: OPENAI_API_KEY environment variable not set.")
+    else:
+        # Example YouTube URL. Replace with any other video.
+        # Make sure the video has English subtitles.
+        video_url = "https://www.youtube.com/watch?v=LCEmiRjPEtQ" # Example: "What is an API?"
+        
+        summarizer = VideoSummarizer(openai_api_key=api_key)
+        summarizer.summarize_and_print(video_url)
