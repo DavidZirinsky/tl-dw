@@ -27,7 +27,7 @@ def test_successful_summary_generation(mock_requests_post, mock_get_transcript):
 
     summarizer = tldw(openai_api_key="fake_key")
 
-    summary_generator = summarizer.summarize(YOUTUBE_URL)
+    summary_generator = summarizer._summarize(YOUTUBE_URL)
     full_summary = "".join(list(summary_generator))
 
     assert full_summary == "This is a test summary."
@@ -42,7 +42,7 @@ def test_init_requires_api_key():
 
 def test_invalid_youtube_url():
     summarizer = tldw(openai_api_key="fake_key")
-    result = list(summarizer.summarize("not_a_youtube_url"))
+    result = list(summarizer._summarize("not_a_youtube_url"))
     assert len(result) == 1
     assert "Error: Invalid YouTube URL provided." in result[0]
 
@@ -55,7 +55,7 @@ def test_transcript_fetch_failure(mock_get_transcript):
     mock_get_transcript.side_effect = Exception("Failed to fetch transcript")
     summarizer = tldw(openai_api_key="fake_key")
 
-    result = list(summarizer.summarize(YOUTUBE_URL))
+    result = list(summarizer._summarize(YOUTUBE_URL))
 
     assert len(result) == 1
     assert "Error: Failed to get transcript: Failed to fetch transcript" in result[0]
@@ -67,7 +67,7 @@ def test_empty_transcript(mock_get_transcript):
     mock_get_transcript.return_value = [{"text": " "}]
     summarizer = tldw(openai_api_key="fake_key")
 
-    result = list(summarizer.summarize(YOUTUBE_URL))
+    result = list(summarizer._summarize(YOUTUBE_URL))
 
     assert len(result) == 1
     assert (
@@ -89,7 +89,7 @@ def test_openai_api_http_error(mock_requests_post, mock_get_transcript):
     mock_requests_post.return_value.__enter__.return_value = mock_response
 
     summarizer = tldw(openai_api_key="fake_key")
-    result = list(summarizer.summarize(YOUTUBE_URL))
+    result = list(summarizer._summarize(YOUTUBE_URL))
 
     assert len(result) == 1
     assert "Error: 401 Unauthorized" in result[0]
@@ -112,6 +112,6 @@ def test_malformed_json_from_openai(mock_requests_post, mock_get_transcript):
     mock_requests_post.return_value.__enter__.return_value = mock_response
 
     summarizer = tldw(openai_api_key="fake_key")
-    full_summary = "".join(list(summarizer.summarize(YOUTUBE_URL)))
+    full_summary = "".join(list(summarizer._summarize(YOUTUBE_URL)))
 
     assert full_summary == "Valid chunk."
