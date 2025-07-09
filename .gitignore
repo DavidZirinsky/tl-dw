@@ -1,1 +1,10 @@
-lambda_layer/
+.env
+
+
+
+tests/__init__.pyc
+tests/__pycache__
+**__pycache__**
+.pytest_cache/
+
+src/tldw.egg-info
