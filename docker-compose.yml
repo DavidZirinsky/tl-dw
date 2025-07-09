@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  tests:
+    container_name: tests
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: bash

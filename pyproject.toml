@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tldw"
+version = "0.1.0"
+authors = [
+  { name="David", email="david@example.com" },
+]
+description = "A Python package to summarize YouTube videos using the OpenAI API."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "youtube-transcript-api>=1.1.1",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/david/tldw"
+"Bug Tracker" = "https://github.com/david/tldw/issues"

@@ -29,12 +29,13 @@ class VideoSummarizer:
         """Retrieves the transcript for a given video ID."""
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            transcript_content = ' '.join([entry['text'] for entry in transcript_list])
-            if not transcript_content.strip():
-                raise ValueError("Could not extract any text from the video (transcript is empty).")
-            return transcript_content
         except Exception as e:
             raise RuntimeError(f"Failed to get transcript: {str(e)}") from e
+
+        transcript_content = ' '.join([entry['text'] for entry in transcript_list])
+        if not transcript_content.strip():
+            raise ValueError("Could not extract any text from the video (transcript is empty).")
+        return transcript_content
 
     def summarize(self, youtube_url: str, model: str = "gpt-4o-mini"):
         """
