@@ -47,7 +47,7 @@ class VideoSummarizer:
         return transcript_content
 
     # Summarizes a YouTube video and streams the summary.
-    def summarize(
+    def _summarize(
         self, youtube_url: str, model: str = "gpt-4o-mini"
     ) -> Generator[str, None, None]:
         try:
@@ -100,12 +100,12 @@ class VideoSummarizer:
 
     #  Calls the summarize method and prints the streaming output to the console.
 
-    def summarize_and_print(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
+    def summarize(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
         ascii_art = pyfiglet.figlet_format("TLDW", font="slant")
         print(ascii_art)  # noqa
         print(f"Summarizing video: {youtube_url}")  # noqa
         try:
-            summary_chunks = self.summarize(youtube_url, model)
+            summary_chunks = self._summarize(youtube_url, model)
 
             print(colored("\n--- Summary ---\n", "green"))  # noqa
             for chunk in summary_chunks:
@@ -127,4 +127,4 @@ if __name__ == "__main__":
         video_url = "https://www.youtube.com/watch?v=LCEmiRjPEtQ"
 
         summarizer = VideoSummarizer(openai_api_key=api_key)
-        summarizer.summarize_and_print(video_url)
+        summarizer.summarize(video_url)

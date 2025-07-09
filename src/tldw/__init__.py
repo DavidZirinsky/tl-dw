@@ -1,1 +1,1 @@
-from .tldw import VideoSummarizer
+from .tldw import VideoSummarizer as tldw
