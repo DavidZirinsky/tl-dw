@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tldw"
-version = "1.0.0"
+version = "1.0.3"
 authors = [
   { name="David Zirinsky", email="dzirinsky@gmail.com" },
 ]
@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.31.0",
-    "youtube-transcript-api>=1.1.1",
+    "youtube-transcript-api>=1.0.3",
     "pyfiglet>=0.8.post1",
     "termcolor>=2.4.0",
 ]
