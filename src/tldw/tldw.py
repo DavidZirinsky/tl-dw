@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from typing import Generator
 
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -44,7 +45,9 @@ class VideoSummarizer:
         return transcript_content
 
     # Summarizes a YouTube video and streams the summary.
-    def summarize(self, youtube_url: str, model: str = "gpt-4o-mini"):
+    def summarize(
+        self, youtube_url: str, model: str = "gpt-4o-mini"
+    ) -> Generator[str, None, None]:
         try:
             video_id = self._extract_video_id(youtube_url)
             transcript = self._get_transcript(video_id)
@@ -95,7 +98,7 @@ class VideoSummarizer:
 
     #  Calls the summarize method and prints the streaming output to the console.
 
-    def summarize_and_print(self, youtube_url: str, model: str = "gpt-4o-mini"):
+    def summarize_and_print(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
         print(f"Summarizing video: {youtube_url}")  # noqa
         try:
             summary_chunks = self.summarize(youtube_url, model)
