@@ -4,7 +4,9 @@ import os
 import re
 from typing import Generator
 
+import pyfiglet
 import requests
+from termcolor import colored
 from youtube_transcript_api import YouTubeTranscriptApi
 
 logger = logging.getLogger(__name__)
@@ -99,14 +101,16 @@ class VideoSummarizer:
     #  Calls the summarize method and prints the streaming output to the console.
 
     def summarize_and_print(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
+        ascii_art = pyfiglet.figlet_format("TLDW", font="slant")
+        print(ascii_art)  # noqa
         print(f"Summarizing video: {youtube_url}")  # noqa
         try:
             summary_chunks = self.summarize(youtube_url, model)
 
-            print("\n--- Summary ---\n")  # noqa
+            print(colored("\n--- Summary ---\n", "green"))  # noqa
             for chunk in summary_chunks:
                 print(chunk, end="", flush=True)  # noqa
-            print("\n\n--- End of Summary ---")  # noqa
+            print(colored("\n\n--- End of Summary ---", "green"))  # noqa
 
         except Exception as e:
             logger.error(f"\nAn error occurred: {e}")
