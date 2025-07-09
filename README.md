@@ -6,6 +6,11 @@
 
 A Python package that instantly summarizes YouTube videos using AI. Get the key points from any video without watching it!
 
+
+<p align="center">
+  <img width="600" src="https://github.com/user-attachments/assets/7686bdcb-b3d9-4155-b9cc-15462f9f5fd2">
+</p>
+
 ## ✨ Features
 
 - 🎥 **YouTube Video Summarization**: Extract transcripts and generate concise summaries
