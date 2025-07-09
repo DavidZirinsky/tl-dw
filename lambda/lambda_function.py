@@ -26,14 +26,9 @@ def stream_process(youtube_url: str):
         yield b"Downloading transcript...\n"
         proxy_pass = os.environ.get('PROXY_USER_PASS')
         
-        # Get transcript using youtube-transcript-api
-        proxies = {
-            "http":  "socks5://10.64.0.1:1080",
-            "https": "socks5://10.64.0.1:1080",
-        }
-
+      
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'], proxies=proxies )
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
             transcript_content = ' '.join([entry['text'] for entry in transcript_list])
         except Exception as e:
             yield f"Failed to get transcript: {str(e)}\n".encode("utf-8")
