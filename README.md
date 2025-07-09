@@ -26,7 +26,15 @@ A Python package that instantly summarizes YouTube videos using AI. Get the key 
 Install from PyPI:
 
 ```bash
-pip install -i https://test.pypi.org/simple/ tldw==1.0.0
+pip install -i https://test.pypi.org/simple/ tldw==1.0.3
+```
+
+Install from Test PyPI:
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ \
+--extra-index-url https://pypi.org/simple \
+tldw==1.0.3
 ```
 
 ### Usage
