@@ -7,9 +7,10 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY tests ./tests
 
+RUN pip install --no-cache-dir build pytest
 
-RUN pip install --no-cache-dir pytest
-RUN pip install .
-
+# This is to build a wheel package to make sure PyPI doesn't break
+RUN python -m build --wheel
+RUN pip install dist/*.whl
 
 CMD ["pytest"]

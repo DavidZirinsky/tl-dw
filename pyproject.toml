@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tldw"
-version = "0.1.0"
+version = "1.0.0"
 authors = [
-  { name="David", email="david@example.com" },
+  { name="David Zirinsky", email="dzirinsky@gmail.com" },
 ]
 description = "A Python package to summarize YouTube videos using the OpenAI API."
 readme = "README.md"
@@ -24,5 +24,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/david/tldw"
-"Bug Tracker" = "https://github.com/david/tldw/issues"
+"Homepage" = "https://github.com/DavidZirinsky/tl-dw"
+"Bug Tracker" = "https://github.com/DavidZirinsky/tl-dw/issues"
