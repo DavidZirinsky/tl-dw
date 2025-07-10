@@ -3,6 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/tldw.svg)](https://badge.fury.io/py/tldw)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Test](https://github.com/DavidZirinsky/tl-dw/actions/workflows/test.yml/badge.svg)](https://github.com/DavidZirinsky/tl-dw/actions/workflows/test.yml)
 
 A Python package that instantly summarizes YouTube videos using AI. Get the key points from any video without watching it!
 
@@ -31,6 +32,14 @@ Install from PyPI:
 
 ```bash
 pip install -i https://test.pypi.org/simple/ tldw==1.0.3
+```
+
+From source:
+
+```bash
+git clone git@github.com:DavidZirinsky/tl-dw.git
+cd tl-dw/
+python3 -m pip install .
 ```
 
 ### Usage
@@ -174,6 +183,16 @@ This project uses pre-commit hooks to ensure code quality and consistency before
 Now, every time you try to commit, the pre-commit hooks will automatically run. If any hook fails, the commit will be aborted, allowing you to fix the issues before committing.
 
 ## 📦 Packaging for PyPI and Test PyPi
+
+For PyPI:
+
+**Build and Upload:**
+
+```bash
+pip install build twine
+python3 -m build
+python3 -m twine upload --repository testpypi dist/*
+```
 
 For Test PyPi:
 
