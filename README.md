@@ -6,7 +6,6 @@
 
 A Python package that instantly summarizes YouTube videos using AI. Get the key points from any video without watching it!
 
-
 <p align="center">
   <img width="600" src="https://github.com/user-attachments/assets/7686bdcb-b3d9-4155-b9cc-15462f9f5fd2">
 </p>
@@ -32,14 +31,6 @@ Install from PyPI:
 
 ```bash
 pip install -i https://test.pypi.org/simple/ tldw==1.0.3
-```
-
-Install from Test PyPI:
-
-```bash
-pip install --index-url https://test.pypi.org/simple/ \
---extra-index-url https://pypi.org/simple \
-tldw==1.0.3
 ```
 
 ### Usage
@@ -182,10 +173,22 @@ This project uses pre-commit hooks to ensure code quality and consistency before
 
 Now, every time you try to commit, the pre-commit hooks will automatically run. If any hook fails, the commit will be aborted, allowing you to fix the issues before committing.
 
-## 📦 Packaging for PyPI
+## 📦 Packaging for PyPI and Test PyPi
+
+For Test PyPi:
+
+**Build and Upload:**
 
 ```bash
 pip install build twine
 python3 -m build
 python3 -m twine upload --repository testpypi dist/*
+```
+
+**Test Installation:**
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ \
+--extra-index-url https://pypi.org/simple \
+tldw==1.0.3
 ```
