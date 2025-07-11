@@ -191,7 +191,7 @@ For PyPI:
 ```bash
 pip install build twine
 python3 -m build
-python3 -m twine upload --repository testpypi dist/*
+python3 -m twine upload  dist/*
 ```
 
 For Test PyPi:
@@ -204,7 +204,7 @@ python3 -m build
 python3 -m twine upload --repository testpypi dist/*
 ```
 
-**Test Installation:**
+**Test PyPi Installation:**
 
 ```bash
 pip install --index-url https://test.pypi.org/simple/ \
