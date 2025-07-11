@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tldw"
-version = "1.0.3"
+version = "1.0.0"
 authors = [
   { name="David Zirinsky", email="dzirinsky@gmail.com" },
 ]
