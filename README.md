@@ -1,6 +1,6 @@
 # TLDW (Too Long; Didn't Watch)
 
-[![PyPI version](https://badge.fury.io/py/tldw.svg)](https://badge.fury.io/py/tldw)
+[![PyPI version](https://badge.fury.io/py/tldw.svg)](https://pypi.org/project/tldw/)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Test](https://github.com/DavidZirinsky/tl-dw/actions/workflows/test.yml/badge.svg)](https://github.com/DavidZirinsky/tl-dw/actions/workflows/test.yml)
