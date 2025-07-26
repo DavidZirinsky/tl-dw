@@ -55,6 +55,29 @@ summary = tldw(os.environ.get('OPENAI_API_KEY'))
 summary.summarize('https://www.youtube.com/watch?v=LCEmiRjPEtQ')
 ```
 
+### Using a Proxy
+
+If you need to use a proxy to fetch the YouTube transcript, you can pass a `proxies` dictionary. This is useful for environments with network restrictions.
+
+```python
+from tldw import tldw
+import os
+
+# Your proxy URL
+proxy_url = "http://user:pass@host:port"
+
+# Initialize with proxy settings
+summary = tldw(
+    os.environ.get('OPENAI_API_KEY'),
+    proxies={'http': proxy_url, 'https': proxy_url}
+)
+
+# Summarize a YouTube video through the proxy
+summary.summarize('https://www.youtube.com/watch?v=LCEmiRjPEtQ')
+```
+
+**Note**: The proxy is only used for fetching the YouTube transcript, not for requests to the OpenAI API.
+
 ## 📝 Example Output
 
 ```
@@ -102,6 +125,7 @@ programming more accessible to non-coders.
 - The video may not have English captions/transcripts available
 - Some videos may have restricted access to transcripts
 - Try with a different video that has confirmed English captions
+- If you are behind a firewall, you may need to use a proxy (see `Using a Proxy` section)
 
 **API Rate Limiting**
 

@@ -2,27 +2,32 @@ import json
 import logging
 import os
 import re
-from typing import Generator
+from typing import Generator, Optional
 
 import pyfiglet
 import requests
 from termcolor import colored
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 logger = logging.getLogger(__name__)
 
 
 # A class to summarize YouTube videos using their transcript and the OpenAI API.
 class VideoSummarizer:
-
-    def __init__(self, openai_api_key: str):
+    def __init__(self, openai_api_key: str, proxies: Optional[dict] = None):
         if not openai_api_key:
             raise ValueError("OpenAI API key is required.")
         self.openai_api_key = openai_api_key
+        proxy_config = None
+        if proxies:
+            proxy_config = GenericProxyConfig(
+                http_url=proxies.get("http"), https_url=proxies.get("https")
+            )
+        self.ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
 
     # Extracts the video ID from a YouTube URL
     def _extract_video_id(self, youtube_url: str) -> str:
-
         video_id_match = re.search(
             r"(?:youtube\.com/watch\?v=|youtu\.be/)([^&\n?#]+)", youtube_url
         )
@@ -33,13 +38,11 @@ class VideoSummarizer:
     # Retrieves the transcript for a given video ID
     def _get_transcript(self, video_id: str) -> str:
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=["en"]
-            )
+            transcript = self.ytt_api.fetch(video_id, languages=["en"])
         except Exception as e:
             raise RuntimeError(f"Failed to get transcript: {str(e)}") from e
 
-        transcript_content = " ".join([entry["text"] for entry in transcript_list])
+        transcript_content = " ".join([entry.text for entry in transcript])
         if not transcript_content.strip():
             raise ValueError(
                 "Could not extract any text from the video (transcript is empty)."
@@ -47,7 +50,7 @@ class VideoSummarizer:
         return transcript_content
 
     # Summarizes a YouTube video and streams the summary.
-    def _summarize(
+    def stream_summary(
         self, youtube_url: str, model: str = "gpt-4o-mini"
     ) -> Generator[str, None, None]:
         try:
@@ -105,7 +108,7 @@ class VideoSummarizer:
         print(ascii_art)  # noqa
         print(f"Summarizing video: {youtube_url}")  # noqa
         try:
-            summary_chunks = self._summarize(youtube_url, model)
+            summary_chunks = self.stream_summary(youtube_url, model)
 
             print(colored("\n--- Summary ---\n", "green"))  # noqa
             for chunk in summary_chunks:
