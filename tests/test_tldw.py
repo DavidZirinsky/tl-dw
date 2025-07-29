@@ -3,21 +3,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from tldw import tldw
+from tldw.tldw import VideoSummarizer as tldw
 
 YOUTUBE_URL = "https://www.youtube.com/watch?v=test_video"
 
 
 #    Tests the successful generation of a summary.
-@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
+@patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 @patch("tldw.tldw.requests.post")
-def test_successful_summary_generation(mock_requests_post, mock_fetch):
+def test_successful_summary_generation(mock_requests_post, mock_get_transcript):
 
-    mock_entry1 = MagicMock()
-    mock_entry1.text = "Hello"
-    mock_entry2 = MagicMock()
-    mock_entry2.text = "world."
-    mock_fetch.return_value = [mock_entry1, mock_entry2]
+    # Mock get_transcript to return list of dicts (as the real API does)
+    mock_get_transcript.return_value = [{"text": "Hello"}, {"text": "world."}]
 
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
@@ -35,7 +32,7 @@ def test_successful_summary_generation(mock_requests_post, mock_fetch):
     full_summary = "".join(list(summary_generator))
 
     assert full_summary == "This is a test summary."
-    mock_fetch.assert_called_once_with("test_video", languages=["en"])
+    mock_get_transcript.assert_called_once_with("test_video", languages=["en"])
     mock_requests_post.assert_called_once()
 
 
@@ -54,9 +51,17 @@ def test_invalid_youtube_url():
 #  Tests that a RuntimeError is raised when the transcript cannot be fetched.
 
 
-@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
-def test_transcript_fetch_failure(mock_fetch):
-    mock_fetch.side_effect = Exception("Failed to fetch transcript")
+@patch("tldw.tldw.YouTubeTranscriptApi")
+def test_transcript_fetch_failure(mock_yt_api_class):
+    mock_yt_api_instance = MagicMock()
+    mock_yt_api_instance.get_transcript.side_effect = Exception(
+        "Failed to fetch transcript"
+    )
+    mock_yt_api_instance.list_transcripts.side_effect = Exception(
+        "Failed to fetch transcript"
+    )
+    mock_yt_api_class.return_value = mock_yt_api_instance
+
     summarizer = tldw(openai_api_key="fake_key")
 
     result = list(summarizer.stream_summary(YOUTUBE_URL))
@@ -66,11 +71,9 @@ def test_transcript_fetch_failure(mock_fetch):
 
 
 #  Tests that a ValueError is raised for an empty transcript.
-@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
-def test_empty_transcript(mock_fetch):
-    mock_entry = MagicMock()
-    mock_entry.text = " "
-    mock_fetch.return_value = [mock_entry]
+@patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
+def test_empty_transcript(mock_get_transcript):
+    mock_get_transcript.return_value = [{"text": " "}]
     summarizer = tldw(openai_api_key="fake_key")
 
     result = list(summarizer.stream_summary(YOUTUBE_URL))
@@ -83,12 +86,12 @@ def test_empty_transcript(mock_fetch):
 
 
 # Tests that an error is yielded when the OpenAI API returns an HTTP error.
-@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
+@patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 @patch("tldw.tldw.requests.post")
-def test_openai_api_http_error(mock_requests_post, mock_fetch):
+def test_openai_api_http_error(mock_requests_post, mock_get_transcript):
     mock_entry = MagicMock()
     mock_entry.text = "Test transcript."
-    mock_fetch.return_value = [mock_entry]
+    mock_get_transcript.return_value = [{"text": "Hello"}, {"text": "world."}]
 
     mock_response = MagicMock()
     mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
@@ -104,12 +107,10 @@ def test_openai_api_http_error(mock_requests_post, mock_fetch):
 
 
 # Tests that malformed JSON from the OpenAI stream is handled gracefully.
-@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
+@patch("tldw.tldw.YouTubeTranscriptApi.get_transcript")
 @patch("tldw.tldw.requests.post")
-def test_malformed_json_from_openai(mock_requests_post, mock_fetch):
-    mock_entry = MagicMock()
-    mock_entry.text = "Test transcript."
-    mock_fetch.return_value = [mock_entry]
+def test_malformed_json_from_openai(mock_requests_post, mock_get_transcript):
+    mock_get_transcript.return_value = [{"text": "Test transcript."}]
 
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None

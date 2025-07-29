@@ -38,11 +38,31 @@ class VideoSummarizer:
     # Retrieves the transcript for a given video ID
     def _get_transcript(self, video_id: str) -> str:
         try:
-            transcript = self.ytt_api.fetch(video_id, languages=["en"])
-        except Exception as e:
-            raise RuntimeError(f"Failed to get transcript: {str(e)}") from e
+            # First, try to fetch the English transcript directly using get_transcript.
+            # This returns a list of dictionaries, so `entry['text']` is correct.
+            transcript = self.ytt_api.get_transcript(video_id, languages=["en"])
+            transcript_content = " ".join([entry["text"] for entry in transcript])
+        except Exception:
+            # If English is not available, find a translatable transcript.
+            try:
+                transcript_list = self.ytt_api.list_transcripts(video_id)
+                translatable_transcript = next(
+                    t for t in transcript_list if t.is_translatable
+                )
+                translated_transcript = translatable_transcript.translate("en")
+                # .fetch() on a translated transcript returns a list of snippet objects.
+                # The error "not subscriptable" means we must use attribute access (.text).
+                fetched_snippets = translated_transcript.fetch()
+                transcript_content = " ".join(
+                    [entry.text for entry in fetched_snippets]
+                )
+            except StopIteration:
+                raise RuntimeError(
+                    f"No translatable transcript found for video {video_id}."
+                ) from None
+            except Exception as e:
+                raise RuntimeError(f"Failed to get transcript: {str(e)}") from e
 
-        transcript_content = " ".join([entry.text for entry in transcript])
         if not transcript_content.strip():
             raise ValueError(
                 "Could not extract any text from the video (transcript is empty)."
