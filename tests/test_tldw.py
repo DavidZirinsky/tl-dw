@@ -124,3 +124,54 @@ def test_malformed_json_from_openai(mock_requests_post, mock_get_transcript):
     full_summary = "".join(list(summarizer.stream_summary(YOUTUBE_URL)))
 
     assert full_summary == "Valid chunk."
+
+
+# Tests Russian video with English subtitles available through translation
+@patch("tldw.tldw.YouTubeTranscriptApi")
+@patch("tldw.tldw.requests.post")
+def test_russian_video_with_english_translation(mock_requests_post, mock_yt_api_class):
+    # Mock the YouTube Transcript API instance
+    mock_yt_api_instance = MagicMock()
+    mock_yt_api_class.return_value = mock_yt_api_instance
+
+    # First call to get_transcript with English fails (no English subtitles)
+    mock_yt_api_instance.get_transcript.side_effect = Exception("No English transcript")
+
+    # Mock the transcript list and translation flow
+    mock_transcript_list = MagicMock()
+    mock_translatable_transcript = MagicMock()
+    mock_translatable_transcript.is_translatable = True
+    mock_translated_transcript = MagicMock()
+
+    # Mock the fetched snippets from translated transcript
+    mock_snippet1 = MagicMock()
+    mock_snippet1.text = "This is a Russian video"
+    mock_snippet2 = MagicMock()
+    mock_snippet2.text = "translated to English."
+    mock_translated_transcript.fetch.return_value = [mock_snippet1, mock_snippet2]
+
+    mock_translatable_transcript.translate.return_value = mock_translated_transcript
+    mock_transcript_list.__iter__.return_value = iter([mock_translatable_transcript])
+    mock_yt_api_instance.list_transcripts.return_value = mock_transcript_list
+
+    # Mock OpenAI API response
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_lines.return_value = [
+        b'data: {"choices": [{"delta": {"content": "Summary of "}}]}',
+        b'data: {"choices": [{"delta": {"content": "Russian video."}}]}',
+        b"data: [DONE]",
+    ]
+    mock_requests_post.return_value.__enter__.return_value = mock_response
+
+    summarizer = tldw(openai_api_key="fake_key")
+    summary_generator = summarizer.stream_summary(YOUTUBE_URL)
+    full_summary = "".join(list(summary_generator))
+
+    assert full_summary == "Summary of Russian video."
+    # Verify it tried English first, then used translation
+    mock_yt_api_instance.get_transcript.assert_called_once_with(
+        "test_video", languages=["en"]
+    )
+    mock_yt_api_instance.list_transcripts.assert_called_once_with("test_video")
+    mock_translatable_transcript.translate.assert_called_once_with("en")
