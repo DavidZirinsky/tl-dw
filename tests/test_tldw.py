@@ -49,8 +49,6 @@ def test_invalid_youtube_url():
 
 
 #  Tests that a RuntimeError is raised when the transcript cannot be fetched.
-
-
 @patch("tldw.tldw.YouTubeTranscriptApi")
 def test_transcript_fetch_failure(mock_yt_api_class):
     mock_yt_api_instance = MagicMock()
