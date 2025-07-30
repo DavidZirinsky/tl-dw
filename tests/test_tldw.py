@@ -39,6 +39,52 @@ def test_successful_summary_generation(mock_requests_post, mock_fetch):
     mock_requests_post.assert_called_once()
 
 
+# Tests successful summary generation from a translated transcript.
+@patch("tldw.tldw.requests.post")
+@patch("tldw.tldw.YouTubeTranscriptApi.list")
+@patch("tldw.tldw.YouTubeTranscriptApi.fetch")
+def test_successful_summary_with_translation(mock_fetch, mock_list, mock_requests_post):
+    # Mock fetch to fail to trigger translation fallback
+    mock_fetch.side_effect = Exception("No direct English transcript")
+
+    # Mock list to return a translatable transcript
+    mock_translatable_transcript = MagicMock()
+    mock_translatable_transcript.is_translatable = True
+    mock_list.return_value = [mock_translatable_transcript]
+
+    # Mock the translation process
+    mock_translated_transcript = MagicMock()
+    mock_translatable_transcript.translate.return_value = mock_translated_transcript
+
+    # Mock the translated transcript content
+    mock_entry1 = MagicMock()
+    mock_entry1.text = "Translated"
+    mock_entry2 = MagicMock()
+    mock_entry2.text = "content."
+    mock_translated_transcript.fetch.return_value = [mock_entry1, mock_entry2]
+
+    # Mock the OpenAI API call
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.iter_lines.return_value = [
+        b'data: {"choices": [{"delta": {"content": "Translated "}}]}',
+        b'data: {"choices": [{"delta": {"content": "summary."}}]}',
+        b"data: [DONE]",
+    ]
+    mock_requests_post.return_value.__enter__.return_value = mock_response
+
+    summarizer = tldw(openai_api_key="fake_key")
+    summary_generator = summarizer.stream_summary(YOUTUBE_URL)
+    full_summary = "".join(list(summary_generator))
+
+    assert full_summary == "Translated summary."
+    mock_fetch.assert_called_once_with("test_video", languages=["en"])
+    mock_list.assert_called_once_with("test_video")
+    mock_translatable_transcript.translate.assert_called_once_with("en")
+    mock_translated_transcript.fetch.assert_called_once()
+    mock_requests_post.assert_called_once()
+
+
 def test_init_requires_api_key():
     with pytest.raises(ValueError, match="OpenAI API key is required."):
         tldw(openai_api_key="")
@@ -52,8 +98,6 @@ def test_invalid_youtube_url():
 
 
 #  Tests that a RuntimeError is raised when the transcript cannot be fetched.
-
-
 @patch("tldw.tldw.YouTubeTranscriptApi.fetch")
 def test_transcript_fetch_failure(mock_fetch):
     mock_fetch.side_effect = Exception("Failed to fetch transcript")
@@ -62,7 +106,7 @@ def test_transcript_fetch_failure(mock_fetch):
     result = list(summarizer.stream_summary(YOUTUBE_URL))
 
     assert len(result) == 1
-    assert "Error: Failed to get transcript: Failed to fetch transcript" in result[0]
+    assert "Error: Failed to get transcript:" in result[0]
 
 
 #  Tests that a ValueError is raised for an empty transcript.
