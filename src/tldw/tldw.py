@@ -38,14 +38,14 @@ class VideoSummarizer:
     # Retrieves the transcript for a given video ID
     def _get_transcript(self, video_id: str) -> str:
         try:
-            # First, try to fetch the English transcript directly using get_transcript.
-            # This returns a list of dictionaries, so `entry['text']` is correct.
-            transcript = self.ytt_api.get_transcript(video_id, languages=["en"])
-            transcript_content = " ".join([entry["text"] for entry in transcript])
+            # First, try to fetch the English transcript directly using fetch().
+            # This returns a FetchedTranscript object which is iterable over snippets.
+            transcript = self.ytt_api.fetch(video_id, languages=["en"])
+            transcript_content = " ".join([entry.text for entry in transcript])
         except Exception:
             # If English is not available, find a translatable transcript.
             try:
-                transcript_list = self.ytt_api.list_transcripts(video_id)
+                transcript_list = self.ytt_api.list(video_id)
                 translatable_transcript = next(
                     t for t in transcript_list if t.is_translatable
                 )
@@ -122,7 +122,6 @@ class VideoSummarizer:
             yield f"An unexpected error occurred: {str(e)}"
 
     #  Calls the summarize method and prints the streaming output to the console.
-
     def summarize(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
         ascii_art = pyfiglet.figlet_format("TLDW", font="slant")
         print(ascii_art)  # noqa
@@ -142,12 +141,11 @@ class VideoSummarizer:
 # Example usage for local development and testing
 if __name__ == "__main__":
     api_key = os.environ.get("OPENAI_API_KEY")
-
     if not api_key:
         logger.error("Error: OPENAI_API_KEY environment variable not set.")
     else:
         # Example YouTube URL. Replace with any other video.
-        video_url = "https://www.youtube.com/watch?v=LCEmiRjPEtQ"
+        video_url = "https://www.youtube.com/watch?v=MtkgT6R2HtA"
 
         summarizer = VideoSummarizer(openai_api_key=api_key)
         summarizer.summarize(video_url)

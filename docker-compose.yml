@@ -6,4 +6,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: pytest
+    volumes:
+      - ./:/app
+    command: tail -f /dev/null
