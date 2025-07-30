@@ -8,4 +8,4 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./:/app
-    command: tail -f /dev/null
+    command: pytest
