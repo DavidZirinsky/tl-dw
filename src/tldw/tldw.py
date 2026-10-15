@@ -71,7 +71,7 @@ class VideoSummarizer:
 
     # Summarizes a YouTube video and streams the summary.
     def stream_summary(
-        self, youtube_url: str, model: str = "gpt-4o-mini"
+        self, youtube_url: str, model: str = "gpt-5.6-luna"
     ) -> Generator[str, None, None]:
         try:
             video_id = self._extract_video_id(youtube_url)
@@ -122,7 +122,7 @@ class VideoSummarizer:
             yield f"An unexpected error occurred: {str(e)}"
 
     #  Calls the summarize method and prints the streaming output to the console.
-    def summarize(self, youtube_url: str, model: str = "gpt-4o-mini") -> None:
+    def summarize(self, youtube_url: str, model: str = "gpt-5.6-luna") -> None:
         ascii_art = pyfiglet.figlet_format("TLDW", font="slant")
         print(ascii_art)  # noqa
         print(f"Summarizing video: {youtube_url}")  # noqa
