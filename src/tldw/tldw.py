@@ -145,7 +145,7 @@ if __name__ == "__main__":
         logger.error("Error: OPENAI_API_KEY environment variable not set.")
     else:
         # Example YouTube URL. Replace with any other video.
-        video_url = "https://www.youtube.com/watch?v=MtkgT6R2HtA"
+        video_url = "https://www.youtube.com/watch?v=LCEmiRjPEtQ"
 
         summarizer = VideoSummarizer(openai_api_key=api_key)
         summarizer.summarize(video_url)
